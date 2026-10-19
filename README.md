@@ -2,7 +2,7 @@
 
 Maze solving with four classic search algorithms: DFS, BFS, greedy best-first search and A*. It started as a small DFS script while I was going through search algorithms for an AI course. I later rewrote it so all four algorithms share one loop and can be compared on the same maze.
 
-![DFS, BFS, Greedy and A* on the same 61x61 maze](images/comparison.png)
+![DFS, BFS, Greedy and A* on the same 30x30 maze](images/comparison.png)
 
 *Blue cells were expanded by the algorithm, red is the path it returned. Start is bottom left, goal top right.*
 
