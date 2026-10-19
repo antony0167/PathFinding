@@ -1,159 +1,67 @@
-from PIL import Image, ImageDraw
+"""Maze solving with DFS, BFS, Greedy best-first search and A*.
+
+Examples
+    python main.py mazes/maze1.txt                     # A*, prints the path
+    python main.py mazes/maze1.txt --algo dfs --show   # open the picture
+    python main.py mazes/large.txt --compare --out images/comparison.png
+    python main.py --generate 30x30 --save mazes/large.txt
+"""
+
+import argparse
+import sys
+
+from pathfinding.generate import generate
+from pathfinding.maze import Maze
+from pathfinding.render import draw, side_by_side
+from pathfinding.search import ALGORITHMS, solve
 
 
-class Node:
-    def __init__(self, state, action, parent):
-        self.state = state
-        self.action = action
-        self.parent = parent
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("maze", nargs="?", help="maze text file")
+    ap.add_argument("--algo", default="astar", choices=sorted(ALGORITHMS))
+    ap.add_argument("--compare", action="store_true", help="run every algorithm and compare")
+    ap.add_argument("--out", help="save the picture to this file")
+    ap.add_argument("--show", action="store_true", help="open the picture in an image viewer")
+    ap.add_argument("--generate", metavar="ROWSxCOLS", help="generate a random maze instead of loading one")
+    ap.add_argument("--save", help="where to write the generated maze")
+    ap.add_argument("--seed", type=int)
+    args = ap.parse_args(argv)
 
+    if args.generate:
+        rows, cols = (int(x) for x in args.generate.lower().split("x"))
+        lines = generate(rows, cols, seed=args.seed)
+        if args.save:
+            with open(args.save, "w") as f:
+                f.write("\n".join(lines) + "\n")
+        maze = Maze(lines)
+    elif args.maze:
+        maze = Maze.from_file(args.maze)
+    else:
+        ap.error("give a maze file or --generate")
 
-class QueuedFrontier:
-    def __init__(self):
-        self.frontier = []
+    if args.compare:
+        results = [solve(maze, a) for a in ("dfs", "bfs", "greedy", "astar")]
+        print(f"{'algorithm':<10}{'path length':>12}{'cells explored':>16}")
+        for r in results:
+            print(f"{r.algorithm:<10}{str(r.length):>12}{len(r.explored):>16}")
+        img = side_by_side(maze, results)
+    else:
+        r = solve(maze, args.algo)
+        if not r.found:
+            print("no path found")
+            return 1
+        print(f"{r.algorithm}: path of {r.length} steps, explored {len(r.explored)} cells")
+        print("actions:", r.actions)
+        img = draw(maze, r)
 
-    def add(self, node):
-        self.frontier.append(node)
-
-    def empty(self):
-        return len(self.frontier) == 0
-
-    def remove(self):
-        if self.empty():
-            return None
-
-        node = self.frontier[0]
-        self.frontier = self.frontier[1:]
-        return node
-
-
-class StackedFrontier(QueuedFrontier):
-    def remove(self):
-        if self.empty():
-            return None
-
-        node = self.frontier[-1]
-        self.frontier = self.frontier[:-1]
-        return node
-
-
-class Maze:
-    def __init__(self, txt_maze):
-        self.maze = []
-        with open(txt_maze, "r") as f:
-            lines = f.readlines()
-        for line in lines:
-            self.maze.append(list(line[:-1]))
-
-    def start(self):
-        for i in range(len(self.maze)):
-            for j in range(len(self.maze)):
-                if self.maze[i][j] == "A":
-                    return tuple([i, j])
-
-    def terminal(self, state):
-        if self.maze[state[0]][state[1]] == "B":
-            return True
-        return False
-
-    def neighbours(self, state):
-        neighbours = []
-        x, y = state[0], state[1]
-        if y + 1 < len(self.maze) and self.maze[x][y + 1] != "#":
-            neighbours.append(tuple([x, y + 1]))
-        if x + 1 < len(self.maze) and self.maze[x + 1][y] != "#":
-            neighbours.append(tuple([x + 1, y]))
-        if x - 1 > -1 and self.maze[x - 1][y] != "#":
-            neighbours.append(tuple([x - 1, y]))
-        if y - 1 > -1 and self.maze[x][y - 1] != "#":
-            neighbours.append(tuple([x, y - 1]))
-
-        return neighbours
-
-    def draw(self):
-
-        size = 40
-
-        img = Image.new(mode="RGB", size=(size * len(self.maze), size * len(self.maze)))
-
-        draw = ImageDraw.Draw(img)
-
-        for i in range(len(self.maze)):
-            for j in range(len(self.maze[i])):
-                if self.maze[i][j] == "#":
-                    draw.rectangle(
-                        (float(j * size), float(i * size), float(j * size + size), float(i * size + size)),
-                        fill="blue",
-                        outline="black",
-                    )
-                if self.maze[i][j] == " ":
-                    draw.rectangle(
-                        (float(j * size), float(i * size), float(j * size + size), float(i * size + size)),
-                        fill="yellow",
-                        outline="black",
-                    )
-                if self.maze[i][j] == "*":
-                    draw.rectangle(
-                        (float(j * size), float(i * size), float(j * size + size), float(i * size + size)),
-                        fill="red",
-                        outline="black",
-                    )
-                if self.maze[i][j] == "A":
-                    draw.rectangle(
-                        (float(j * size), float(i * size), float(j * size + size), float(i * size + size)),
-                        fill="green",
-                        outline="black",
-                    )
-                if self.maze[i][j] == "B":
-                    draw.rectangle(
-                        (float(j * size), float(i * size), float(j * size + size), float(i * size + size)),
-                        fill="white",
-                        outline="black",
-                    )
-
+    if args.out:
+        img.save(args.out)
+        print(f"saved {args.out}")
+    if args.show:
         img.show()
-
-
-def main():
-    maze = Maze("./mazes/maze1.txt")
-
-    frontier = StackedFrontier()
-
-    explored = []
-
-    start = Node(maze.start(), None, None)
-
-    frontier.add(start)
-
-    while True:
-        if frontier.empty():
-            raise Exception("No solution found")
-
-        node = frontier.remove()
-
-        explored.append(node.state)
-
-        if maze.terminal(node.state):
-            actions = []
-            while node.parent is not None:
-                actions.append(node.action)
-                node = node.parent
-
-            print(f"actions: {actions[::-1]}")
-            maze.draw()
-
-            return
-
-        else:
-            neighbours = maze.neighbours(node.state)
-            for neighbour in neighbours:
-                if neighbour not in explored:
-                    action = tuple([neighbour[0] - node.state[0], neighbour[1] - node.state[1]])
-                    child = Node(neighbour, action, node)
-                    maze.maze[node.state[0]][node.state[1]] = "*"
-                    frontier.add(child)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
-    
+    sys.exit(main())
